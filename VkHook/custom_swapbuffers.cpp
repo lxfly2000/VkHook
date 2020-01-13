@@ -1,9 +1,7 @@
 #include "custom_swapbuffers.h"
-#include"ftdraw.h"
 #include<map>
 #include<ctime>
-#pragma comment(lib,"OpenGL32.lib")
-#pragma comment(lib,"glu32.lib")
+#include<string>
 
 #define F(_i_str) (float)_wtof(_i_str)
 
@@ -12,7 +10,7 @@ class SwapBuffersDraw
 private:
 	unsigned t1, t2, fcounter;
 	RECT windowrect;
-	FTDraw ftdraw;
+	//FTDraw ftdraw;
 	std::wstring display_text;
 	int current_fps;
 	TCHAR time_text[32], fps_text[32],width_text[32],height_text[32];
@@ -24,7 +22,7 @@ private:
 	TCHAR font_shadow_red[16], font_shadow_green[16], font_shadow_blue[16], font_shadow_alpha[16], font_shadow_distance[16];
 	int period_frames,font_face_index;
 
-	glm::vec4 text_color, text_shadow_color;
+	//glm::vec4 text_color, text_shadow_color;
 	float calc_text_x, calc_text_y, calc_shadow_x, calc_shadow_y;
 	float anchor_x, anchor_y;
 public:
@@ -41,9 +39,9 @@ public:
 		calc_text_y = F(text_y)*height;
 		calc_shadow_x = calc_text_x + F(font_shadow_distance);
 		calc_shadow_y = calc_text_y + F(font_shadow_distance);
-		ftdraw.ResizeWindow(width, height);
+		//ftdraw.ResizeWindow(width, height);
 	}
-	void Init(HDC dc)
+	bool Init(const VkSwapchainKHR* pSC,VkQueue* pCQ)
 	{
 		TCHAR szConfPath[MAX_PATH];
 		char szConfPathA[MAX_PATH];
@@ -79,10 +77,10 @@ public:
 		GetInitConfStr(width_fmt, TEXT("%d"));
 		GetInitConfStr(height_fmt, TEXT("%d"));
 		GetInitConfStr(display_text_fmt, TEXT("{fps}"));
-		text_color = glm::vec4(F(font_red), F(font_green), F(font_blue), F(font_alpha));
-		text_shadow_color = glm::vec4(F(font_shadow_red), F(font_shadow_green), F(font_shadow_blue), F(font_shadow_alpha));
+		//text_color = glm::vec4(F(font_red), F(font_green), F(font_blue), F(font_alpha));
+		//text_shadow_color = glm::vec4(F(font_shadow_red), F(font_shadow_green), F(font_shadow_blue), F(font_shadow_alpha));
 
-		GetClientRect(WindowFromDC(dc), &windowrect);
+		GetClientRect(WindowFromDC(NULL), &windowrect);//TODO
 		calc_text_x = F(text_x)*(windowrect.right-windowrect.left);
 		calc_text_y = F(text_y)*(windowrect.bottom-windowrect.top);
 		if (lstrcmpi(text_align, TEXT("left")) == 0)
@@ -103,7 +101,8 @@ public:
 			anchor_y = F(text_valign);
 		calc_shadow_x = calc_text_x + F(font_shadow_distance);
 		calc_shadow_y = calc_text_y + F(font_shadow_distance);
-		ftdraw.Init(windowrect.right - windowrect.left, windowrect.bottom - windowrect.top, font_name, font_face_index, font_size, NULL);
+		//ftdraw.Init(windowrect.right - windowrect.left, windowrect.bottom - windowrect.top, font_name, font_face_index, font_size, NULL);
+		return true;
 	}
 
 	void Draw()
@@ -140,7 +139,7 @@ public:
 			if (pos != std::wstring::npos)
 				display_text.replace(pos, 8, height_text);
 		}
-		//https://github.com/ocornut/imgui/blob/master/examples/imgui_impl_opengl3.cpp#L142
+		/*//https://github.com/ocornut/imgui/blob/master/examples/imgui_impl_opengl3.cpp#L142
 #pragma region Backup GL state
 		GLenum last_active_texture; glGetIntegerv(GL_ACTIVE_TEXTURE, (GLint*)&last_active_texture);
 		glActiveTexture(GL_TEXTURE0);
@@ -195,26 +194,112 @@ public:
 #endif
 		OriginalViewport(last_viewport[0], last_viewport[1], (GLsizei)last_viewport[2], (GLsizei)last_viewport[3]);
 		glScissor(last_scissor_box[0], last_scissor_box[1], (GLsizei)last_scissor_box[2], (GLsizei)last_scissor_box[3]);
-#pragma endregion
+#pragma endregion*/
 	}
-	WNDPROC oldwndproc;
+	void ExecuteExtraCommandList()
+	{
+		//Currently nothing to do.
+	}
 };
 
-static std::map<HDC, SwapBuffersDraw>cp;
-
-void CustomSwapBuffers(HDC pDC)
+struct SCV
 {
-	if (cp.find(pDC) == cp.end())
+	const VkSwapchainKHR* pSC;
+	VkQueue* pCQ;
+	SwapBuffersDraw* pPresent;
+	bool NewPresent()
 	{
-		cp.insert(std::make_pair(pDC, SwapBuffersDraw()));
-		cp[pDC].Init(pDC);
+		if (pPresent)
+			delete pPresent;
+		pPresent = new SwapBuffersDraw();
+		return pPresent->Init(pSC, pCQ);
 	}
-	cp[pDC].Draw();
+	SCV() :pSC(nullptr), pCQ(nullptr), pPresent(nullptr)
+	{
+	}
+	SCV(const VkSwapchainKHR* sc, VkQueue* cq) :SCV()
+	{
+		pSC = sc;
+		pCQ = cq;
+	}
+	SCV(SCV&& other)noexcept :SCV()
+	{
+		pSC = other.pSC;
+		pCQ = other.pCQ;
+		pPresent = other.pPresent;
+		other.pPresent = nullptr;
+	}
+	//这里会卡住，不知道为啥
+	/*~SCV()
+	{
+		if (pPresent)
+		{
+			delete pPresent;
+			pPresent = nullptr;
+		}
+	}*/
+};
+static std::map<const VkSwapchainKHR*, void*> s_d;
+static std::map<VkQueue*, void*> c_d;
+static std::map<void*, SCV> d_sc;
+
+SCV& GetSCVorNew(void* pDev, const VkSwapchainKHR* pSC, VkQueue* pCQ)
+{
+	if (d_sc.find(pDev) == d_sc.end())
+		d_sc.insert(std::make_pair(pDev, SCV(pSC, pCQ)));
+	SCV& scv = d_sc[pDev];
+	if (pSC)
+		scv.pSC = pSC;
+	if (pCQ)
+		scv.pCQ = pCQ;
+	return scv;
 }
 
-void CustomViewport(int x, int y, int width, int height)
+
+void CustomQueuePresentKHR(VkQueue q, const VkPresentInfoKHR* pInfo)
 {
-	HDC dc = wglGetCurrentDC();
-	if (cp.find(dc) != cp.end())
-		cp[dc].CalcRect(x, y, width, height);
+	//查找或记录设备
+	void* pDev=nullptr;//TODO
+	if (s_d.find(pInfo->pSwapchains) == s_d.end())
+		s_d.insert(std::make_pair(pInfo->pSwapchains, pDev));
+	//查找或记录SCV
+	SCV& scv = GetSCVorNew(pDev, pInfo->pSwapchains, nullptr);
+	if (scv.pCQ)
+	{
+		if (scv.pPresent)
+			scv.pPresent->Draw();
+		else if (s_d[pInfo->pSwapchains] == c_d[scv.pCQ])
+			scv.NewPresent();
+	}
+}
+
+void CustomSetViewport(VkCommandBuffer cb, uint32_t firstViewport, uint32_t vpCount, const VkViewport* pViewports)
+{
+	VkSwapchainKHR* p=nullptr;
+	if (s_d.find(p) == s_d.end())
+		return;
+	void* d = s_d[p];
+	if (d_sc.find(d) == d_sc.end())
+		return;
+	SwapBuffersDraw* pp = d_sc[d].pPresent;
+	if (pp)
+		pp->CalcRect(pViewports->x,pViewports->y,pViewports->width,pViewports->height);
+}
+
+void CustomExecuteCommands(VkCommandBuffer cb, uint32_t cbCount, const VkCommandBuffer* pCommandBuffers)
+{
+	//查找或记录设备
+	void* pDev=nullptr;
+	VkQueue* q;
+	if (c_d.find(q) == c_d.end())
+		c_d.insert(std::make_pair(q, pDev));
+	//查找或记录SCV
+	SCV& scv = GetSCVorNew(pDev, nullptr, q);
+	if (scv.pSC)
+	{
+		if (scv.pPresent)
+			scv.pPresent->ExecuteExtraCommandList();
+		else if (s_d[scv.pSC] == c_d[q])
+			scv.NewPresent();
+	}
 }

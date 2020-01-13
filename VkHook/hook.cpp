@@ -1,14 +1,16 @@
-ÔªøÔªø//https://pastebin.com/f6d87dd03
+//https://pastebin.com/f6d87dd03
 #include<Windows.h>
 #include"vulkan/vulkan.h"
 #include"..\minhook\include\MinHook.h"
 
 #include"custom_swapbuffers.h"
 
-typedef VkResult(VKAPI_PTR* PFvkQueuePresentKHR)(VkQueue queue, const VkPresentInfoKHR* pPresentInfo);
-typedef void (VKAPI_PTR* PFN_vkCmdExecuteCommands)(VkCommandBuffer commandBuffer, uint32_t commandBufferCount, const VkCommandBuffer* pCommandBuffers);
-static PFwglSwapBuffers pfSwapBuffers = nullptr, pfOriginalSwapBuffers = nullptr;
-static PFglViewport pfViewport = nullptr, pfOriginalViewport = nullptr;
+typedef PFN_vkQueuePresentKHR PFvkQueuePresentKHR;
+typedef PFN_vkCmdExecuteCommands PFvkCmdExecuteCommands;
+typedef PFN_vkCmdSetViewport PFvkCmdSetViewport;
+static PFvkQueuePresentKHR pfPresent = nullptr, pfOriginalPresent = nullptr;
+static PFvkCmdExecuteCommands pfExecuteCommands = nullptr, pfOriginalExecuteCommands = nullptr;
+static PFvkCmdSetViewport pfSetViewport = nullptr, pfOriginalSetViewport = nullptr;
 static HMODULE hDllModule;
 
 DWORD GetDLLPath(LPTSTR path, DWORD max_length)
@@ -21,61 +23,81 @@ DWORD GetDLLPathA(LPSTR path, DWORD max_length)
 	return GetModuleFileNameA(hDllModule, path, max_length);
 }
 
-BOOL WINAPI HookedwglSwapBuffers(HDC p)
+BOOL WINAPI HookedvkQueuePresentKHR(VkQueue q, const VkPresentInfoKHR* pInfo)
 {
-	CustomSwapBuffers(p);
-	return pfOriginalSwapBuffers(p);
+	CustomQueuePresentKHR(q, pInfo);
+	return pfOriginalPresent(q, pInfo);
 }
 
-void WINAPI HookedglViewport(GLint x, GLint y, GLsizei width, GLsizei height)
+void WINAPI HookedvkCmdSetViewport(VkCommandBuffer cb, uint32_t firstViewport, uint32_t vpCount, const VkViewport* pViewports)
 {
-	CustomViewport(x, y, width, height);
-	return pfOriginalViewport(x, y, width, height);
+	CustomSetViewport(cb, firstViewport, vpCount, pViewports);
+	return pfOriginalSetViewport(cb, firstViewport, vpCount, pViewports);
 }
 
-void WINAPI OriginalViewport(int x, int y, int width, int height)
+void WINAPI HookedvkCmdExecuteCommands(VkCommandBuffer cb, uint32_t cbCount, const VkCommandBuffer* pCommandBuffers)
 {
-	return pfOriginalViewport(x, y, width, height);
+	CustomExecuteCommands(cb, cbCount, pCommandBuffers);
+	return pfOriginalExecuteCommands(cb, cbCount, pCommandBuffers);
 }
 
-PFwglSwapBuffers GetSwapBuffersAddr()
+void WINAPI OriginalSetViewport(VkCommandBuffer cb, uint32_t firstViewport, uint32_t vpCount, const VkViewport* pViewports)
 {
-	return reinterpret_cast<PFwglSwapBuffers>(GetProcAddress(LoadLibrary(TEXT("OpenGL32.dll")), "wglSwapBuffers"));
+	return pfOriginalSetViewport(cb, firstViewport, vpCount, pViewports);
 }
 
-PFglViewport GetViewportAddr()
+PFvkQueuePresentKHR GetQueuePresentKHR()
 {
-	return reinterpret_cast<PFglViewport>(GetProcAddress(LoadLibrary(TEXT("OpenGL32.dll")), "glViewport"));
+	return reinterpret_cast<PFvkQueuePresentKHR>(GetProcAddress(LoadLibrary(TEXT("vulkan-1.dll")), "vkQueuePresentKHR"));
 }
 
-//ÂØºÂá∫‰ª•Êñπ‰æøÂú®Ê≤°ÊúâDllMainÊó∂Ë∞ÉÁî®
+PFvkCmdSetViewport GetSetViewportAddr()
+{
+	return reinterpret_cast<PFvkCmdSetViewport>(GetProcAddress(LoadLibrary(TEXT("vulkan-1.dll")), "vkCmdSetViewport"));
+}
+
+PFvkCmdExecuteCommands GetExecuteCommandsAddr()
+{
+	return reinterpret_cast<PFvkCmdExecuteCommands>(GetProcAddress(LoadLibrary(TEXT("vulkan-1.dll")), "vkCmdExecuteCommands"));
+}
+
+//µº≥ˆ“‘∑Ω±„‘⁄√ª”–DllMain ±µ˜”√
 extern "C" __declspec(dllexport) BOOL StartHook()
 {
-	pfSwapBuffers = GetSwapBuffersAddr();
-	pfViewport = GetViewportAddr();
+	pfPresent = GetQueuePresentKHR();
+	pfSetViewport = GetSetViewportAddr();
+	pfExecuteCommands = GetExecuteCommandsAddr();
 	if (MH_Initialize() != MH_OK)
 		return FALSE;
-	if (MH_CreateHook(pfSwapBuffers, HookedwglSwapBuffers, reinterpret_cast<void**>(&pfOriginalSwapBuffers)) != MH_OK)
+	if (MH_CreateHook(pfPresent, HookedvkQueuePresentKHR, reinterpret_cast<void**>(&pfOriginalPresent)) != MH_OK)
 		return FALSE;
-	if (MH_CreateHook(pfViewport, HookedglViewport, reinterpret_cast<void**>(&pfOriginalViewport)) != MH_OK)
+	if (MH_CreateHook(pfSetViewport, HookedvkCmdSetViewport, reinterpret_cast<void**>(&pfOriginalSetViewport)) != MH_OK)
 		return FALSE;
-	if (MH_EnableHook(pfSwapBuffers) != MH_OK)
+	if (MH_CreateHook(pfExecuteCommands, HookedvkCmdExecuteCommands, reinterpret_cast<void**>(&pfExecuteCommands)) != MH_OK)
 		return FALSE;
-	if (MH_EnableHook(pfViewport) != MH_OK)
+	if (MH_EnableHook(pfPresent) != MH_OK)
+		return FALSE;
+	if (MH_EnableHook(pfSetViewport) != MH_OK)
+		return FALSE;
+	if (MH_EnableHook(pfExecuteCommands) != MH_OK)
 		return FALSE;
 	return TRUE;
 }
 
-//ÂØºÂá∫‰ª•Êñπ‰æøÂú®Ê≤°ÊúâDllMainÊó∂Ë∞ÉÁî®
+//µº≥ˆ“‘∑Ω±„‘⁄√ª”–DllMain ±µ˜”√
 extern "C" __declspec(dllexport) BOOL StopHook()
 {
-	if (MH_DisableHook(pfViewport) != MH_OK)
+	if (MH_DisableHook(pfExecuteCommands) != MH_OK)
 		return FALSE;
-	if (MH_DisableHook(pfSwapBuffers) != MH_OK)
+	if (MH_DisableHook(pfSetViewport) != MH_OK)
 		return FALSE;
-	if (MH_RemoveHook(pfViewport) != MH_OK)
+	if (MH_DisableHook(pfPresent) != MH_OK)
 		return FALSE;
-	if (MH_RemoveHook(pfSwapBuffers) != MH_OK)
+	if (MH_RemoveHook(pfExecuteCommands) != MH_OK)
+		return FALSE;
+	if (MH_RemoveHook(pfSetViewport) != MH_OK)
+		return FALSE;
+	if (MH_RemoveHook(pfPresent) != MH_OK)
 		return FALSE;
 	if (MH_Uninitialize() != MH_OK)
 		return FALSE;
@@ -105,7 +127,7 @@ BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved)
 	return TRUE;
 }
 
-//SetWindowHookExÈúÄË¶Å‰∏Ä‰∏™ÂØºÂá∫ÂáΩÊï∞ÔºåÂê¶ÂàôDLL‰∏ç‰ºöË¢´Âä†ËΩΩ
+//SetWindowHookEx–Ë“™“ª∏ˆµº≥ˆ∫Ø ˝£¨∑Ò‘ÚDLL≤ªª·±ªº”‘ÿ
 extern "C" __declspec(dllexport) LRESULT WINAPI HookProc(int code, WPARAM w, LPARAM l)
 {
 	return CallNextHookEx(NULL, code, w, l);
