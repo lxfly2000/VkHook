@@ -258,7 +258,7 @@ SCV& GetSCVorNew(void* pDev, const VkSwapchainKHR* pSC, VkQueue* pCQ)
 
 void CustomQueuePresentKHR(VkQueue q, const VkPresentInfoKHR* pInfo)
 {
-	//查找或记录设备
+	/*//查找或记录设备
 	void* pDev=nullptr;//TODO
 	if (s_d.find(pInfo->pSwapchains) == s_d.end())
 		s_d.insert(std::make_pair(pInfo->pSwapchains, pDev));
@@ -270,12 +270,12 @@ void CustomQueuePresentKHR(VkQueue q, const VkPresentInfoKHR* pInfo)
 			scv.pPresent->Draw();
 		else if (s_d[pInfo->pSwapchains] == c_d[scv.pCQ])
 			scv.NewPresent();
-	}
+	}*/
 }
 
 void CustomSetViewport(VkCommandBuffer cb, uint32_t firstViewport, uint32_t vpCount, const VkViewport* pViewports)
 {
-	VkSwapchainKHR* p=nullptr;
+	/*VkSwapchainKHR* p=nullptr;
 	if (s_d.find(p) == s_d.end())
 		return;
 	void* d = s_d[p];
@@ -283,12 +283,12 @@ void CustomSetViewport(VkCommandBuffer cb, uint32_t firstViewport, uint32_t vpCo
 		return;
 	SwapBuffersDraw* pp = d_sc[d].pPresent;
 	if (pp)
-		pp->CalcRect(pViewports->x,pViewports->y,pViewports->width,pViewports->height);
+		pp->CalcRect(pViewports->x,pViewports->y,pViewports->width,pViewports->height);*/
 }
 
 void CustomExecuteCommands(VkCommandBuffer cb, uint32_t cbCount, const VkCommandBuffer* pCommandBuffers)
 {
-	//查找或记录设备
+	/*//查找或记录设备
 	void* pDev=nullptr;
 	VkQueue* q;
 	if (c_d.find(q) == c_d.end())
@@ -301,5 +301,10 @@ void CustomExecuteCommands(VkCommandBuffer cb, uint32_t cbCount, const VkCommand
 			scv.pPresent->ExecuteExtraCommandList();
 		else if (s_d[scv.pSC] == c_d[q])
 			scv.NewPresent();
-	}
+	}*/
+}
+
+void CustomQueueSubmit(VkQueue q, uint32_t submitCount, const VkSubmitInfo* pSubmits, VkFence fence)
+{
+	//TODO
 }
